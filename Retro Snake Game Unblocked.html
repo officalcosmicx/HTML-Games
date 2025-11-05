@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Retro Snake</title>
+<!-- The entire style and script is placed here to avoid external files -->
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+/* Basic Setup and Background */
+body {
+background-color: #1a1a1a;
+color: #00ff00; /* Retro green text */
+font-family: 'Press Start 2P', monospace;
+display: flex;
+flex-direction: column;
+align-items: center;
+justify-content: center;
+min-height: 100vh;
+margin: 0;
+padding: 20px;
+box-sizing: border-box;
+user-select: none;
+}
+
+/* Game Container */
+#game-container {
+border: 4px solid #00ff00;
+border-radius: 8px;
+box-shadow: 0 0 15px #00ff00;
+padding: 10px;
+background-color: #0d0d0d;
+display: flex;
+flex-direction: column;
+align-items: center;
+max-width: 90vw;
+}
+
+/* Scoreboard and Status */
+#score-panel {
+display: flex;
+justify-content: space-between;
+width: 100%;
+padding: 5px 0 10px 0;
+font-size: 10px;
+text-align: center;
+}
+
+#status-message {
+margin-top: 10px;
+text-align: center;
+font-size: 10px;
+color: #ff00ff; /* Magenta for status */
+min-height: 20px;
+}
+
+/* Canvas (Game Board) */
+canvas {
+background-color: #003300; /* Darker green board */
+display: block;
+border: 2px solid #00ff00;
+box-sizing: content-box;
+}
+
+/* Controls */
+#controls {
+margin-top: 20px;
+display: grid;
+grid-template-areas: ". up ." "left down right";
+gap: 10px;
+width: 150px;
+}
+.control-btn {
+background-color: #00ff00;
+color: #1a1a1a;
+border: none;
+padding: 10px;
+font-family: 'Press Start 2P', monospace;
+font-size: 8px;
+cursor: pointer;
+border-radius: 4px;
+box-shadow: 0 4px 0 #00aa00;
+transition: all 0.1s;
+}
+.control-btn:active {
+box-shadow: 0 1px 0 #00aa00;
+transform: translateY(3px);
+}
+#up-btn { grid-area: up; }
+#left-btn { grid-area: left; }
+#down-btn { grid-area: down; }
+#right-btn { grid-area: right; }
+
+/* Hide touch controls on desktop/larger screens */
+@media (min-width: 600px) {
+#controls {
+display: none;
+}
+}
+/* Adjustments for smaller screens */
+@media (max-width: 600px) {
+body {
+padding: 10px;
+}
+#score-panel {
+font-size: 8px;
+}
+#game-container {
+max-width: 95vw;
+padding: 5px;
+}
+#status-message {
+font-size: 8px;
+}
+}
+</style>
+</head>
+<body>
+
+<div id="game-container">
+<h1 style="font-size: 16px; margin-bottom: 5px; text-shadow: 0 0 5px #00ff00;">SNAKE (UNBLOCKED)</h1>
+<div id="score-panel">
+<span id="score">SCORE: 0</span>
+<span id="high-score">HIGH SCORE: 0</span>
+</div>
+
+<canvas id="gameCanvas" width="300" height="300"></canvas>
+
+<div id="status-message">Press SPACE or tap to start!</div>
+
+<div id="controls">
+<button class="control-btn" id="up-btn">UP</button>
+<button class="control-btn" id="left-btn">LEFT</button>
+<button class="control-btn" id="right-btn">RIGHT</button>
+<button class="control-btn" id="down-btn">DOWN</button>
+</div>
+</div>
+
+<script>
+// Use a self-invoking function to keep variables local
+(function() {
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const scoreDisplay = document.getElementById('score');
+const highScoreDisplay = document.getElementById('high-score');
+const statusMessage = document.getElementById('status-message');
+
+const gridSize = 20;
+const tileCount = canvas.width / gridSize;
+let snake = [];
+let velocityX = 0;
+let velocityY = 0;
+let foodX = 0;
+let foodY = 0;
+let score = 0;
+let highScore = localStorage.getItem('snakeHighScore') || 0;
+let isPaused = true;
+let inputLocked = false; // Prevents 180-degree turns instantly
+
+// Initial position and size
+snake.push({ x: 10, y: 10 });
+snake.push({ x: 9, y: 10 });
+
+highScoreDisplay.textContent = `HIGH SCORE: ${highScore}`;
+
+function resetGame() {
+snake = [
+{ x: 10, y: 10 },
+{ x: 9, y: 10 }
+];
+velocityX = 1; // Start moving right
+velocityY = 0;
+score = 0;
+scoreDisplay.textContent = `SCORE: 0`;
+isPaused = true;
+inputLocked = false;
+placeFood();
+statusMessage.textContent = "Press SPACE or tap to START!";
+draw(); // Draw initial state
+}
+
+// Simple pseudo-random food placement
+function placeFood() {
+foodX = Math.floor(Math.random() * tileCount);
+foodY = Math.floor(Math.random() * tileCount);
+
+// Ensure food doesn't spawn on the snake
+for (let i = 0; i < snake.length; i++) {
+if (snake[i].x === foodX && snake[i].y === foodY) {
+placeFood();
+return;
+}
+}
+}
+
+function update() {
+if (isPaused) return;
+
+// 1. Update snake head position
+let headX = snake[0].x + velocityX;
+let headY = snake[0].y + velocityY;
+
+// 2. Check for wall collision
+if (headX < 0 || headX >= tileCount || headY < 0 || headY >= tileCount) {
+gameOver();
+return;
+}
+
+// 3. Check for self-collision
+for (let i = 1; i < snake.length; i++) {
+if (headX === snake[i].x && headY === snake[i].y) {
+gameOver();
+return;
+}
+}
+
+// 4. Add new head
+snake.unshift({ x: headX, y: headY });
+
+// 5. Check for food consumption
+if (headX === foodX && headY === foodY) {
+score++;
+scoreDisplay.textContent = `SCORE: ${score}`;
+placeFood(); // Place new food
+} else {
+snake.pop(); // Remove tail if no food eaten
+}
+
+inputLocked = false; // Allow input again after one movement step
+}
+
+function draw() {
+// Clear canvas (Darker Green)
+ctx.fillStyle = '#003300';
+ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+// Draw Food (Red)
+ctx.fillStyle = '#ff0000';
+ctx.shadowColor = '#ff0000';
+ctx.shadowBlur = 5;
+ctx.fillRect(foodX * gridSize, foodY * gridSize, gridSize - 1, gridSize - 1);
+ctx.shadowBlur = 0; // Reset shadow
+
+// Draw Snake (Bright Green)
+ctx.fillStyle = '#00ff00';
+for (let i = 0; i < snake.length; i++) {
+// Slight border/shadow effect for retro look
+ctx.fillRect(snake[i].x * gridSize, snake[i].y * gridSize, gridSize - 1, gridSize - 1);
+}
+
+// Draw Head with a different color/style
+ctx.fillStyle = '#ffffff'; // White head
+ctx.fillRect(snake[0].x * gridSize, snake[0].y * gridSize, gridSize - 1, gridSize - 1);
+
+if (isPaused) {
+// Draw a semi-transparent overlay when paused
+ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+}
+
+function gameOver() {
+isPaused = true;
+statusMessage.textContent = "GAME OVER! Press SPACE or tap to retry.";
+if (score > highScore) {
+highScore = score;
+localStorage.setItem('snakeHighScore', highScore);
+highScoreDisplay.textContent = `HIGH SCORE: ${highScore}`;
+}
+}
+
+// --- Game Loop ---
+let lastTime = 0;
+const frameRate = 1000 / 10; // 10 frames per second (classic snake speed)
+
+function gameLoop(timestamp) {
+if (timestamp - lastTime >= frameRate) {
+lastTime = timestamp;
+update();
+draw();
+}
+requestAnimationFrame(gameLoop);
+}
+
+// --- Input Handling ---
+
+function changeDirection(key) {
+if (inputLocked) return;
+inputLocked = true;
+
+switch (key) {
+case 'ArrowUp':
+case 'w':
+case 'W':
+if (velocityY !== 1) { velocityX = 0; velocityY = -1; }
+break;
+case 'ArrowDown':
+case 's':
+case 'S':
+if (velocityY !== -1) { velocityX = 0; velocityY = 1; }
+break;
+case 'ArrowLeft':
+case 'a':
+case 'A':
+if (velocityX !== 1) { velocityX = -1; velocityY = 0; }
+break;
+case 'ArrowRight':
+case 'd':
+case 'D':
+if (velocityX !== -1) { velocityX = 1; velocityY = 0; }
+break;
+}
+}
+
+function handleKey(event) {
+if (event.key === ' ' || event.key === 'Spacebar') {
+event.preventDefault(); // Prevent scrolling
+if (isPaused) {
+if (statusMessage.textContent.includes("GAME OVER")) {
+resetGame();
+isPaused = false;
+} else {
+isPaused = false;
+statusMessage.textContent = "Use Arrow Keys or WASD to move!";
+}
+} else {
+// Pause the game
+isPaused = true;
+statusMessage.textContent = "PAUSED. Press SPACE or tap to continue.";
+}
+return;
+}
+if (!isPaused) {
+changeDirection(event.key);
+}
+}
+
+// --- Touch/Tap Start/Pause ---
+canvas.addEventListener('click', () => {
+if (isPaused) {
+if (statusMessage.textContent.includes("GAME OVER")) {
+resetGame();
+isPaused = false;
+} else {
+isPaused = false;
+statusMessage.textContent = "Use touch controls below to move!";
+}
+} else {
+isPaused = true;
+statusMessage.textContent = "PAUSED. Tap to continue.";
+}
+});
+
+// --- Mobile Touch Controls ---
+document.getElementById('up-btn').addEventListener('click', () => {
+if (!isPaused) changeDirection('ArrowUp');
+});
+document.getElementById('down-btn').addEventListener('click', () => {
+if (!isPaused) changeDirection('ArrowDown');
+});
+document.getElementById('left-btn').addEventListener('click', () => {
+if (!isPaused) changeDirection('ArrowLeft');
+});
+document.getElementById('right-btn').addEventListener('click', () => {
+if (!isPaused) changeDirection('ArrowRight');
+});
+
+
+// Start listeners
+document.addEventListener('keydown', handleKey);
+
+// Initial setup
+resetGame();
+requestAnimationFrame(gameLoop);
+
+})();
+</script>
+</body>
+</html>

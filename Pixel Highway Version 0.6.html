@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pixel Highway: 90s Traffic Dodge</title>
+<!-- Load Tailwind CSS --><script src="https://cdn.tailwindcss.com"></script>
+<!-- Set Inter font --><style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+body {
+font-family: 'Inter', sans-serif;
+background-color: #1a1a1a; /* Dark gray/black background for yellow/black theme */
+}
+/* Custom CSS for the Game Elements and 90s Vibe */
+#game-area {
+position: relative;
+width: 100%;
+max-width: 400px; /* Classic vertical arcade screen width */
+height: 80vh; /* Responsive height */
+background-color: #000000; /* Black road */
+overflow: hidden;
+box-shadow: 0 0 30px rgba(255, 255, 0, 0.5); /* Yellow glow */
+border-radius: 12px;
+}
+
+/* Animated Road Lines (Yellow theme) */
+#road-lines {
+position: absolute;
+top: 0;
+left: 50%;
+transform: translateX(-50%);
+width: 8px; /* Center line width */
+height: 100%;
+background-image: repeating-linear-gradient(
+to bottom,
+#ffff00 0, /* Yellow */
+#ffff00 50%, /* Yellow */
+transparent 50%,
+transparent 100%
+);
+background-size: 100% 40px; /* Height of the repeating dash */
+}
+
+/* Player Car Styling (Simple, geometric, bright) */
+#player-car {
+position: absolute;
+width: 40px;
+height: 60px;
+background-color: #ffff00; /* Neon Yellow */
+bottom: 20px;
+border-radius: 4px;
+transition: left 0.1s linear; /* Smooth horizontal movement */
+border: 3px solid #000000; /* Black border */
+box-shadow: 0 0 10px #ffff00; /* Yellow shadow */
+z-index: 10;
+box-sizing: border-box; /* Include padding/border in element's total width/height */
+}
+
+/* Added detail to the player car for a more "realistic" look (Windshield) */
+#player-car::before {
+content: '';
+position: absolute;
+top: 5px;
+left: 5px;
+right: 5px;
+height: 15px;
+background-color: rgba(0, 0, 0, 0.5); /* Cockpit/Windshield look */
+border-radius: 2px;
+}
+
+/* Wheels for Player Car */
+#player-car::after {
+content: '';
+position: absolute;
+bottom: 0;
+left: 0;
+right: 0;
+height: 8px; /* Wheel height */
+/* Simple black/dark gray wheels using background gradient trick */
+background:
+radial-gradient(circle at 10% 50%, #000, #333 70%) 5% 50% / 10px 8px no-repeat,
+radial-gradient(circle at 90% 50%, #000, #333 70%) 95% 50% / 10px 8px no-repeat;
+}
+
+/* Enemy Car Styling (Realistic Colors, Subdued Look) */
+.traffic-car {
+position: absolute;
+width: 45px;
+height: 65px;
+/* Background color is set dynamically in JS now */
+border-radius: 4px;
+border: 2px solid #000000; /* Black border */
+box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5); /* Subtle shadow */
+z-index: 5;
+box-sizing: border-box; /* Include padding/border in element's total width/height */
+}
+
+/* Wheels for Traffic Car */
+.traffic-car::after {
+content: '';
+position: absolute;
+bottom: 0;
+left: 0;
+right: 0;
+height: 8px; /* Wheel height */
+/* Simple black/dark gray wheels using background gradient trick */
+background:
+radial-gradient(circle at 10% 50%, #000, #333 70%) 5% 50% / 10px 8px no-repeat,
+radial-gradient(circle at 90% 50%, #000, #333 70%) 95% 50% / 10px 8px no-repeat;
+}
+
+/* Message box styling (Yellow/Black theme) */
+#message-box {
+background-color: rgba(0, 0, 0, 0.85);
+backdrop-filter: blur(5px);
+border: 4px solid #ffff00; /* Yellow border */
+box-shadow: 0 0 25px #ffff00; /* Yellow shadow */
+}
+
+#message-title { /* Yellow Title */
+color: #ffff00;
+text-shadow: 0 0 5px #ffff00;
+}
+
+#start-button { /* Black button with yellow text/shadow */
+background-color: #000000 !important;
+color: #ffff00 !important;
+box-shadow: 0 0 10px #ffff00 !important;
+}
+</style>
+</head>
+<body class="p-4 flex flex-col items-center justify-center min-h-screen">
+
+<div class="text-center mb-6 w-full max-w-sm">
+<h1 class="text-4xl font-bold text-white mb-2 tracking-widest uppercase" style="color: #ffff00; text-shadow: 0 0 5px #ffff00;">Pixel Highway</h1>
+<div class="flex justify-between text-lg font-mono text-gray-200">
+<p>Score: <span id="score">0</span></p>
+<p>Speed: <span id="speed">1.0x</span></p>
+</div>
+</div>
+
+<!-- Game Container --><div id="game-area-container" class="w-full max-w-sm flex justify-center h-full">
+<div id="game-area" class="w-full relative">
+<div id="road-lines" class="road-lines"></div>
+<div id="player-car"></div>
+</div>
+</div>
+
+<!-- Game Over/Start Message Box --><div id="message-box" class="fixed inset-0 flex items-center justify-center hidden p-8 z-50">
+<div class="p-8 rounded-xl text-center shadow-lg w-full max-w-xs md:max-w-md" >
+<h2 id="message-title" class="text-3xl font-bold mb-4 uppercase">Game Over!</h2>
+<p id="message-text" class="text-xl text-gray-200 mb-6"></p>
+<button id="start-button" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-6 rounded-lg transition duration-200 uppercase tracking-wider text-xl">
+Start Race
+</button>
+</div>
+</div>
+
+<script>
+const gameArea = document.getElementById('game-area');
+const playerCar = document.getElementById('player-car');
+const roadLines = document.getElementById('road-lines');
+const scoreDisplay = document.getElementById('score');
+const speedDisplay = document.getElementById('speed');
+const messageBox = document.getElementById('message-box');
+const messageTitle = document.getElementById('message-title');
+const messageText = document.getElementById('message-text');
+const startButton = document.getElementById('start-button');
+
+// Game State
+const state = {
+isRunning: false,
+score: 0,
+speed: 8.0, // Base speed significantly increased for fast forward motion
+maxSpeed: 20,
+playerX: 0,
+playerY: 0,
+playerWidth: 40,
+playerHeight: 60,
+areaWidth: 0,
+areaHeight: 0,
+traffic: [],
+lastTrafficTime: 0,
+roadPosition: 0,
+keys: { ArrowLeft: false, ArrowRight: false, a: false, d: false },
+playerMoveSpeed: 7,
+carSpawnRate: 1000, // Reduced to 1000ms (1 second) for more traffic density - UPDATED
+};
+
+// --- Utility Functions ---
+
+function setupGameDimensions() {
+state.areaWidth = gameArea.clientWidth;
+state.areaHeight = gameArea.clientHeight;
+
+// Initialize player position to center
+state.playerX = (state.areaWidth / 2) - (state.playerWidth / 2);
+state.playerY = state.areaHeight - state.playerHeight - 20;
+
+playerCar.style.left = `${state.playerX}px`;
+playerCar.style.top = `${state.playerY}px`;
+}
+
+// Generate a random color for enemy cars (now realistic colors)
+function getRandomColor() {
+// Common, non-neon traffic colors
+const colors = ['#ffffff', '#c0c0c0', '#cc0000', '#1f356d', '#555555'];
+return colors[Math.floor(Math.random() * colors.length)];
+}
+
+// --- Traffic Management ---
+
+function spawnTrafficCar() {
+if (!state.isRunning) return;
+
+const carWidth = 45;
+const carHeight = 65;
+
+// Calculate a safe lane position to avoid spawning outside the road
+const minX = 10;
+const maxX = state.areaWidth - carWidth - 10;
+
+// Randomly pick a lane (left, center-left, center-right, right)
+const lane1 = minX;
+const lane2 = state.areaWidth / 4 - carWidth / 2;
+const lane3 = state.areaWidth * 3 / 4 - carWidth / 2;
+const lane4 = maxX - (carWidth - 5);
+
+const lanes = [lane1, lane2, lane3, lane4];
+
+const positionX = lanes[Math.floor(Math.random() * lanes.length)];
+
+// Create the DOM element
+const carEl = document.createElement('div');
+carEl.className = 'traffic-car';
+carEl.style.width = `${carWidth}px`;
+carEl.style.height = `${carHeight}px`;
+carEl.style.left = `${positionX}px`;
+carEl.style.top = `-${carHeight}px`; // Start off-screen
+carEl.style.backgroundColor = getRandomColor(); // Set realistic color
+gameArea.appendChild(carEl);
+
+// Add to state array
+state.traffic.push({
+el: carEl,
+x: positionX,
+y: -carHeight,
+width: carWidth,
+height: carHeight,
+});
+}
+
+function updateTraffic(delta) {
+// Traffic moves faster than the road animation to simulate passing cars
+const trafficSpeed = state.speed * delta / 16;
+
+for (let i = state.traffic.length - 1; i >= 0; i--) {
+const car = state.traffic[i];
+// Reduced the movement multiplier from 8 to 5 to make traffic even slower - UPDATED
+car.y += trafficSpeed * 5;
+car.el.style.top = `${car.y}px`;
+
+// Check if car went off-screen (bottom)
+if (car.y > state.areaHeight) {
+gameArea.removeChild(car.el);
+state.traffic.splice(i, 1);
+state.score += 10; // Score for successful dodge
+
+// Increase speed slightly (MUCH SLOWER difficulty curve)
+if (state.speed < state.maxSpeed) {
+state.speed += 0.01;
+}
+
+// Decrease traffic interval to make it harder (slower increase in spawn rate)
+if (state.carSpawnRate > 300) {
+state.carSpawnRate -= 1;
+}
+}
+}
+
+// Spawn new traffic
+const currentTime = performance.now();
+if (currentTime - state.lastTrafficTime > state.carSpawnRate) {
+spawnTrafficCar();
+state.lastTrafficTime = currentTime;
+}
+}
+
+// --- Game Logic ---
+
+function checkCollision() {
+const p = {
+x: state.playerX,
+y: state.playerY,
+w: state.playerWidth,
+h: state.playerHeight
+};
+
+for (const car of state.traffic) {
+// Simple AABB (Axis-Aligned Bounding Box) collision check
+const buffer = 4;
+if (p.x < car.x + car.width - buffer &&
+p.x + p.w > car.x + buffer &&
+p.y < car.y + car.height - buffer &&
+p.y + p.h > car.y + buffer) {
+// Collision detected!
+gameOver();
+return true;
+}
+}
+return false;
+}
+
+function updatePlayerPosition() {
+const move = state.playerMoveSpeed;
+let newX = state.playerX;
+
+// Horizontal movement scaled up to feel fast and responsive
+if (state.keys.ArrowLeft || state.keys.a) {
+newX -= move * 3.5;
+}
+if (state.keys.ArrowRight || state.keys.d) {
+newX += move * 3.5;
+}
+
+// Clamp position within game boundaries
+newX = Math.max(0, Math.min(newX, state.areaWidth - state.playerWidth));
+
+state.playerX = newX;
+playerCar.style.left = `${state.playerX}px`;
+}
+
+function updateRoadAnimation(delta) {
+state.roadPosition = (state.roadPosition + state.speed * (delta / 16)) % 40;
+roadLines.style.backgroundPositionY = `${state.roadPosition}px`;
+}
+
+function updateUI() {
+scoreDisplay.textContent = state.score;
+// The speed display now uses 8.0 as the base for the multiplier
+speedDisplay.textContent = `${(state.speed / 8.0).toFixed(1)}x`;
+}
+
+let lastTime = 0;
+function gameLoop(time) {
+if (!state.isRunning) return;
+
+const delta = time - lastTime;
+lastTime = time;
+
+// 1. Update Player Position
+updatePlayerPosition();
+
+// 2. Update Traffic
+updateTraffic(delta);
+
+// 3. Check Collisions
+if (checkCollision()) {
+// gameOver() called inside checkCollision
+return;
+}
+
+// 4. Update Visuals
+updateRoadAnimation(delta);
+updateUI();
+
+requestAnimationFrame(gameLoop);
+}
+
+// --- Game Flow Control ---
+
+function resetGame() {
+state.score = 0;
+state.speed = 8.0; // Reset to faster base speed
+state.carSpawnRate = 1000; // Reset to higher density spawn rate - UPDATED
+state.lastTrafficTime = 0;
+state.traffic.forEach(car => gameArea.removeChild(car.el));
+state.traffic = [];
+setupGameDimensions();
+updateUI();
+}
+
+function startGame() {
+if (state.isRunning) return;
+resetGame();
+state.isRunning = true;
+messageBox.classList.add('hidden');
+lastTime = performance.now();
+requestAnimationFrame(gameLoop);
+}
+
+function gameOver() {
+state.isRunning = false;
+
+messageTitle.textContent = 'GAME OVER!';
+messageText.innerHTML = `Your Final Score: <span class="font-extrabold" style="color: #ffff00;">${state.score}</span>. <br> Dodge the traffic!`;
+startButton.textContent = 'Retry?';
+messageBox.classList.remove('hidden');
+
+// Remove all keyboard event listeners to prevent unintended input
+state.keys = { ArrowLeft: false, ArrowRight: false, a: false, d: false };
+}
+
+function showStartScreen() {
+messageTitle.textContent = 'PIXEL HIGHWAY';
+messageText.innerHTML = 'The highway is congested! You are moving extremely fast while traffic creeps slowly. Use **Arrow Keys** (or A/D) to drive and dodge the density.';
+startButton.textContent = 'Start Race';
+messageBox.classList.remove('hidden');
+}
+
+
+// --- Event Listeners ---
+
+window.onload = () => {
+setupGameDimensions(); // Initial setup
+showStartScreen(); // Show the initial screen
+
+// Handle resizing
+window.addEventListener('resize', setupGameDimensions);
+};
+
+startButton.addEventListener('click', startGame);
+
+// Keyboard Controls
+document.addEventListener('keydown', (e) => {
+if (state.isRunning && state.keys.hasOwnProperty(e.key)) {
+state.keys[e.key] = true;
+}
+});
+
+document.addEventListener('keyup', (e) => {
+if (state.isRunning && state.keys.hasOwnProperty(e.key)) {
+state.keys[e.key] = false;
+}
+});
+
+// Touch/Click Controls (for Chromebook touch screens)
+gameArea.addEventListener('touchstart', handleTouch);
+gameArea.addEventListener('touchend', handleTouch);
+gameArea.addEventListener('mousedown', handleTouch);
+gameArea.addEventListener('mouseup', handleTouch);
+
+function handleTouch(e) {
+if (!state.isRunning) return;
+
+e.preventDefault(); // Prevent default scroll/zoom behavior
+
+// Use clientX for position relative to the viewport
+const touchX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+
+// Get game area boundaries
+const rect = gameArea.getBoundingClientRect();
+
+// Calculate X relative to the game area
+const relativeX = touchX - rect.left;
+
+// Determine side based on half the game area width
+const isLeft = relativeX < rect.width / 2;
+
+if (e.type.includes('down') || e.type.includes('start')) {
+// Press/Start
+state.keys.ArrowLeft = isLeft;
+state.keys.ArrowRight = !isLeft;
+} else if (e.type.includes('up') || e.type.includes('end')) {
+// Release/End
+state.keys.ArrowLeft = false;
+state.keys.ArrowRight = false;
+}
+}
+</script>
+</body>
+</html>

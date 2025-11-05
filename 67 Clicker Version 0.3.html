@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>67 Clicker</title>
+<!-- Load Tailwind CSS for simple, modern styling -->
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+/* Custom styles to make the big button look great */
+.click-button {
+transition: all 0.1s;
+background: linear-gradient(145deg, #1f2937, #111827);
+box-shadow:
+0 4px 0 #4b5563, /* Darker bottom shadow for 3D look */
+0 0 20px rgba(74, 222, 128, 0.5); /* Green glow */
+border: 4px solid #4ade80; /* Accent border */
+user-select: none;
+}
+
+.click-button:active {
+box-shadow: 0 1px 0 #4b5563; /* Reduces shadow on press */
+transform: translateY(3px); /* Moves button down */
+}
+
+.upgrade-card, .wheel-section {
+box-shadow: 0 0 10px rgba(74, 222, 128, 0.2);
+transition: transform 0.1s;
+}
+
+.upgrade-card:hover:not(.disabled), .wheel-spin-button:hover:not(.disabled) {
+transform: translateY(-2px);
+cursor: pointer;
+}
+
+.upgrade-card.disabled, .wheel-spin-button.disabled {
+opacity: 0.5;
+cursor: not-allowed;
+}
+
+.character-display {
+display: flex;
+align-items: center;
+gap: 8px;
+padding: 8px;
+background-color: #2d3748; /* gray-800 */
+border-radius: 8px;
+margin-top: 8px;
+}
+.character-display img {
+width: 50px;
+height: 50px;
+object-fit: cover;
+border-radius: 4px;
+border: 2px solid #4ade80;
+}
+</style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex flex-col p-4 font-sans" style="font-family: 'Inter', sans-serif;">
+
+<header class="text-center mb-8">
+<h1 class="text-4xl font-extrabold text-green-400 tracking-wider">
+67 Clicker
+</h1>
+<p class="text-gray-400 mt-1">Tap your way to cosmic riches!</p>
+</header>
+
+<main class="flex flex-col lg:flex-row gap-8 w-full max-w-6xl mx-auto">
+
+<!-- Left Column: Score and Click Area -->
+<div class="flex-1 flex flex-col items-center p-4 bg-gray-800 rounded-xl shadow-2xl border-2 border-gray-700">
+<h2 class="text-xl font-semibold mb-4 text-gray-300">Total BrainRot</h2>
+<div id="clicksDisplay" class="text-6xl md:text-8xl font-black text-green-400 mb-6 tracking-tight">0</div>
+
+<!-- Clicks Per Tap Display -->
+<p class="text-lg font-medium text-gray-300 mb-2">
+BrainRot / Click: <span id="clickValueText" class="text-green-400 font-bold">1</span>
+</p>
+
+<!-- NEW: BPS Display -->
+<p class="text-md font-medium text-gray-400 mb-4">
+Passive BrainRot / Sec: <span id="bpsDisplay" class="text-yellow-300 font-bold">0.0</span>
+</p>
+
+<button id="clickButton" class="click-button w-48 h-48 md:w-64 md:h-64 rounded-full text-2xl font-bold flex items-center justify-center text-green-200">
+CLAIM BRAINROT
+</button>
+
+<p id="feedbackText" class="text-green-400 text-sm mt-4 min-h-[1.5rem] opacity-0 transition-opacity duration-100"></p>
+</div>
+
+<!-- Right Column: Upgrades -->
+<div class="flex-1 p-4 bg-gray-800 rounded-xl shadow-2xl border-2 border-gray-700">
+<h2 class="text-xl font-semibold mb-4 pb-2 border-b border-gray-700 text-gray-300">BrainRot Enhancements</h2>
+
+<!-- 1. More BrainRot (Click Upgrade) Card -->
+<div id="powerClickerUpgrade" class="upgrade-card bg-gray-700 p-4 rounded-lg flex justify-between items-center transition duration-150">
+<div>
+<h3 class="text-lg font-bold text-green-400">More BrainRot</h3>
+<p class="text-sm text-gray-300">
+Level: <span id="clickerLevelDisplay">1</span> | Clicks per tap: <span id="clicksPerTapDisplay">1</span>
+</p>
+<p class="text-xs text-gray-400 mt-1">
+This will give you more brainrot per click, MORE BRAINROTTING
+</p>
+</div>
+<div class="text-right">
+<div id="upgradeCostDisplay" class="text-xl font-bold text-yellow-300">Cost: 10</div>
+<button id="upgradeButton" class="bg-green-600 hover:bg-green-700 text-gray-900 font-bold py-2 px-4 rounded transition duration-150 mt-2">
+BUY
+</button>
+</div>
+</div>
+
+<!-- 2. Auto-BrainRot Bot (Passive Upgrade) Card -->
+<div id="passiveUpgrade" class="upgrade-card bg-gray-700 p-4 rounded-lg flex justify-between items-center transition duration-150 mt-4">
+<div>
+<h3 class="text-lg font-bold text-yellow-300">Auto-BrainRot Bot</h3>
+<p class="text-sm text-gray-300">
+Level: <span id="passiveLevelDisplay">0</span> | BPS: <span id="passiveBpsDisplay">0.0</span>
+</p>
+<p class="text-xs text-gray-400 mt-1">
+Purchases a small worker that generates passive BrainRot (+0.1 BPS).
+</p>
+</div>
+<div class="text-right">
+<div id="passiveUpgradeCostDisplay" class="text-xl font-bold text-yellow-300">Cost: 100</div>
+<button id="passiveUpgradeButton" class="bg-green-600 hover:bg-green-700 text-gray-900 font-bold py-2 px-4 rounded transition duration-150 mt-2">
+BUY
+</button>
+</div>
+</div>
+
+<!-- 3. Wheel of BrainRot -->
+<div class="wheel-section bg-gray-800 p-4 rounded-xl shadow-2xl border-2 border-gray-700 mt-8">
+<h2 class="text-xl font-semibold mb-4 pb-2 border-b border-gray-700 text-gray-300">Wheel of BrainRot</h2>
+<p class="text-gray-400 mb-4">Spin for unique characters that multiply your passive BrainRot!</p>
+<div class="flex justify-between items-center mb-4">
+<div class="text-lg font-bold text-yellow-300">Cost: 100 BrainRot</div>
+<button id="spinWheelButton" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded transition duration-150 wheel-spin-button">
+SPIN THE WHEEL
+</button>
+</div>
+<div id="wheelResult" class="text-center text-green-400 font-bold text-xl mb-4 min-h-[1.5rem]"></div>
+
+<h3 class="text-lg font-semibold text-gray-300 mb-2">BrainRot Characters:</h3>
+<div id="charactersOwnedDisplay" class="flex flex-wrap gap-4">
+<!-- Characters will be dynamically inserted here -->
+</div>
+</div>
+
+</div>
+</main>
+
+<script>
+// --- Core Game State and Initialization ---
+
+const storageKey = 'superClickerGameData';
+
+let gameState = {
+clicks: 0,
+
+// Click Upgrade Stats
+clickerLevel: 1,
+clickValue: 1,
+baseCost: 10,
+costMultiplier: 1.5,
+
+// Passive Upgrade Stats
+bps: 0, // BrainRot Per Second base value
+passiveLevel: 0,
+passiveBaseCost: 100,
+passiveCostMultiplier: 2.0, // More expensive multiplier
+
+// NEW: Character Stats
+characters: {}, // Stores characters owned: { "Tung Tung Tung Sahur": true, "67 Kid": true, ... }
+totalBpsMultiplier: 1.0, // Base multiplier for BPS from characters
+};
+
+const elements = {
+clicksDisplay: document.getElementById('clicksDisplay'),
+clickButton: document.getElementById('clickButton'),
+clickValueText: document.getElementById('clickValueText'),
+feedbackText: document.getElementById('feedbackText'),
+
+// Click Upgrade Elements
+upgradeButton: document.getElementById('upgradeButton'),
+upgradeCostDisplay: document.getElementById('upgradeCostDisplay'),
+clickerLevelDisplay: document.getElementById('clickerLevelDisplay'),
+clicksPerTapDisplay: document.getElementById('clicksPerTapDisplay'),
+upgradeCard: document.getElementById('powerClickerUpgrade'),
+
+// Passive Upgrade Elements
+bpsDisplay: document.getElementById('bpsDisplay'),
+passiveUpgradeButton: document.getElementById('passiveUpgradeButton'),
+passiveUpgradeCostDisplay: document.getElementById('passiveUpgradeCostDisplay'),
+passiveLevelDisplay: document.getElementById('passiveLevelDisplay'),
+passiveBpsDisplay: document.getElementById('passiveBpsDisplay'),
+passiveUpgradeCard: document.getElementById('passiveUpgrade'),
+
+// NEW Wheel Elements
+spinWheelButton: document.getElementById('spinWheelButton'),
+wheelResult: document.getElementById('wheelResult'),
+charactersOwnedDisplay: document.getElementById('charactersOwnedDisplay'),
+};
+
+// NEW: Character definitions (name, rarity, BPS multiplier, base64 image data)
+const charactersData = {
+'Tung Tung Tung Sahur': {
+multiplier: 1.1, // 10% BPS increase
+rarity: 'Common',
+// Embedded Base64 Image Data (placeholder for now)
+image: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAASwAAAEsCAYAAAB5fY51AAAACXBIWXMAAAsTAAALEwEAmpwYAAABQElEQVR4nO3BMQEAAADCoPVPbQZgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAvC4AAeY3P7cAAAAASUVORK5CYII='
+},
+'Tralalero Tralala': {
+multiplier: 1.2, // 20% BPS increase
+rarity: 'Rare',
+// Placeholder Image
+image: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAASwAAAEsCAYAAAB5fY51AAAACXBIWXMAAAsTAAALEwEAmpwYAAABQElEQVR4nO3BMQEAAADCoPVPbQZgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAvC4AAeY3P7cAAAAASUVORK5CYII='
+},
+'Chimpanzini Bananini': {
+multiplier: 1.5, // 50% BPS increase
+rarity: 'Epic',
+// Placeholder Image
+image: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAASwAAAEsCAYAAAB5fY51AAAACXBIWXMAAAsTAAALEwEAmpwYAAABQElEQVR4nO3BMQEAAADCoPVPbQZgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAvC4AAeY3P7cAAAAASUVORK5CYII='
+},
+'67 Kid': {
+multiplier: 100.0, // 10000% BPS increase (Legendary)
+rarity: 'Legendary',
+// Placeholder Image
+image: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAASwAAAEsCAYAAAB5fY51AAAACXBIWXMAAAsTAAALEwEAmpwYAAABQElEQVR4nO3BMQEAAADCoPVPbQZgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAvC4AAeY3P7cAAAAASUVORK5CYII='
+}
+};
+
+const wheelPrizes = [
+// Characters with adjusted weights for rarity
+{ name: 'Tung Tung Tung Sahur', weight: 70 }, // Common (70.0%)
+{ name: 'Tralalero Tralala', weight: 10 }, // Rare (10.0%) - Harder than Common
+{ name: 'Chimpanzini Bananini', weight: 3 }, // Epic (3.0%) - Harder than Rare
+{ name: '67 Kid', weight: 0.5 }, // Legendary (0.5%) - Very hard
+// BrainRot prizes
+{ name: '50 BrainRot', weight: 13 }, // Remaining chance distributed here
+{ name: '100 BrainRot', weight: 3.5 } // Remaining chance distributed here
+];
+// Total weight is 100 (70 + 10 + 3 + 0.5 + 13 + 3.5 = 100)
+
+
+// Load saved game state
+function loadGame() {
+try {
+const savedData = localStorage.getItem(storageKey);
+if (savedData) {
+const loadedState = JSON.parse(savedData);
+// Merge loaded state, ensuring any new properties default if not saved before
+gameState = { ...gameState, ...loadedState };
+// Ensure characters object is initialized if not present in old save
+if (!gameState.characters) {
+gameState.characters = {};
+}
+// Recalculate BPS multiplier on load
+updateBpsMultiplier();
+}
+} catch (error) {
+console.error("Error loading game state:", error);
+}
+updateDisplay();
+}
+
+// Save game state
+function saveGame() {
+localStorage.setItem(storageKey, JSON.stringify(gameState));
+}
+
+// --- Cost Calculation Functions ---
+
+function calculateClickCost() {
+return Math.floor(gameState.baseCost * (gameState.costMultiplier ** (gameState.clickerLevel - 1)));
+}
+
+function calculatePassiveCost() {
+return Math.floor(gameState.passiveBaseCost * (gameState.passiveCostMultiplier ** gameState.passiveLevel));
+}
+
+// NEW: Calculate the total BPS multiplier from all owned characters
+function updateBpsMultiplier() {
+let totalMultiplier = 1.0;
+for (const charName in gameState.characters) {
+if (gameState.characters[charName] && charactersData[charName]) {
+// Check if the character's multiplier is defined
+if (charactersData[charName].multiplier) {
+// Apply the multiplier. Use toFixed(2) for precise float multiplication.
+totalMultiplier = parseFloat((totalMultiplier * charactersData[charName].multiplier).toFixed(2));
+}
+}
+}
+gameState.totalBpsMultiplier = totalMultiplier;
+}
+
+// --- Display and UI Functions ---
+
+function updateDisplay() {
+// --- Core Display ---
+elements.clicksDisplay.textContent = Math.floor(gameState.clicks).toLocaleString();
+
+// --- Click Upgrade Display ---
+elements.clickValueText.textContent = gameState.clickValue.toLocaleString();
+elements.clicksPerTapDisplay.textContent = gameState.clickValue.toLocaleString();
+elements.clickerLevelDisplay.textContent = gameState.clickerLevel.toLocaleString();
+
+const nextClickCost = calculateClickCost();
+elements.upgradeCostDisplay.textContent = `Cost: ${nextClickCost.toLocaleString()}`;
+
+if (gameState.clicks >= nextClickCost) {
+elements.upgradeButton.disabled = false;
+elements.upgradeButton.classList.remove('bg-gray-600', 'hover:bg-gray-600');
+elements.upgradeButton.classList.add('bg-green-600', 'hover:bg-green-700');
+elements.upgradeCard.classList.remove('disabled');
+} else {
+elements.upgradeButton.disabled = true;
+elements.upgradeButton.classList.remove('bg-green-600', 'hover:bg-green-700');
+elements.upgradeButton.classList.add('bg-gray-600', 'hover:bg-gray-600');
+elements.upgradeCard.classList.add('disabled');
+}
+
+// --- Passive Upgrade Display ---
+// Calculate effective BPS including character multipliers
+const effectiveBPS = parseFloat((gameState.bps * gameState.totalBpsMultiplier).toFixed(1));
+elements.bpsDisplay.textContent = effectiveBPS.toFixed(1);
+elements.passiveBpsDisplay.textContent = gameState.bps.toFixed(1); // Base BPS for upgrade description
+elements.passiveLevelDisplay.textContent = gameState.passiveLevel.toLocaleString();
+
+const nextPassiveCost = calculatePassiveCost();
+elements.passiveUpgradeCostDisplay.textContent = `Cost: ${nextPassiveCost.toLocaleString()}`;
+
+if (gameState.clicks >= nextPassiveCost) {
+elements.passiveUpgradeButton.disabled = false;
+elements.passiveUpgradeButton.classList.remove('bg-gray-600', 'hover:bg-gray-600');
+elements.passiveUpgradeButton.classList.add('bg-green-600', 'hover:bg-green-700');
+elements.passiveUpgradeCard.classList.remove('disabled');
+} else {
+elements.passiveUpgradeButton.disabled = true;
+elements.passiveUpgradeButton.classList.remove('bg-green-600', 'hover:bg-green-700');
+elements.passiveUpgradeButton.classList.add('bg-gray-600', 'hover:bg-gray-600');
+elements.passiveUpgradeCard.classList.add('disabled');
+}
+
+// --- Wheel Display ---
+const spinCost = 100; // Define spin cost here for easy update
+if (gameState.clicks >= spinCost) {
+elements.spinWheelButton.disabled = false;
+elements.spinWheelButton.classList.remove('bg-gray-600', 'hover:bg-gray-600');
+elements.spinWheelButton.classList.add('bg-purple-600', 'hover:bg-purple-700');
+} else {
+elements.spinWheelButton.disabled = true;
+elements.spinWheelButton.classList.remove('bg-purple-600', 'hover:bg-purple-700');
+elements.spinWheelButton.classList.add('bg-gray-600', 'hover:bg-gray-600');
+}
+
+updateCharactersDisplay();
+}
+
+// Brief, non-blocking feedback animation
+function showFeedback(amount, type = 'add') {
+elements.feedbackText.textContent = `${type === 'add' ? '+' : '-'}${amount.toLocaleString()}`;
+elements.feedbackText.classList.remove('opacity-0');
+elements.feedbackText.classList.add('opacity-100');
+setTimeout(() => {
+elements.feedbackText.classList.remove('opacity-100');
+elements.feedbackText.classList.add('opacity-0');
+}, 500);
+}
+
+// NEW: Update display of owned characters
+function updateCharactersDisplay() {
+elements.charactersOwnedDisplay.innerHTML = ''; // Clear existing
+for (const charName in gameState.characters) {
+if (gameState.characters[charName] && charactersData[charName]) {
+const charInfo = charactersData[charName];
+const charDiv = document.createElement('div');
+charDiv.className = 'character-display';
+
+// Display the multiplier as a percentage
+const multiplierPercent = ((charInfo.multiplier - 1) * 100).toFixed(0);
+
+charDiv.innerHTML = `
+<img src="${charInfo.image}" alt="${charName}" onerror="this.onerror=null;this.src='https://placehold.co/50x50/333/ccc?text=IMG'">
+<div>
+<p class="text-sm font-bold text-white">${charName}</p>
+<p class="text-xs text-gray-400">${charInfo.rarity} (+${multiplierPercent}% BPS)</p>
+</div>
+`;
+elements.charactersOwnedDisplay.appendChild(charDiv);
+}
+}
+}
+
+// --- Game Logic Functions ---
+
+function handleManualClick() {
+const amount = gameState.clickValue;
+gameState.clicks += amount;
+showFeedback(amount);
+updateDisplay();
+saveGame();
+}
+
+function handleUpgradeClick() {
+const cost = calculateClickCost();
+
+if (gameState.clicks >= cost) {
+gameState.clicks -= cost;
+gameState.clickerLevel++;
+
+if (gameState.clickerLevel <= 10) {
+gameState.clickValue += 1;
+} else if (gameState.clickerLevel <= 25) {
+gameState.clickValue += 2;
+} else {
+gameState.clickValue += 5;
+}
+
+updateDisplay();
+saveGame();
+}
+}
+
+function handlePassiveUpgradeClick() {
+const cost = calculatePassiveCost();
+
+if (gameState.clicks >= cost) {
+gameState.clicks -= cost;
+gameState.passiveLevel++;
+
+gameState.bps = parseFloat((gameState.bps + 0.1).toFixed(1));
+
+updateDisplay();
+saveGame();
+}
+}
+
+// NEW: Wheel Spin Logic
+function spinWheel() {
+const spinCost = 100;
+if (gameState.clicks < spinCost || elements.spinWheelButton.disabled) {
+elements.wheelResult.textContent = "Not enough BrainRot!";
+return;
+}
+
+gameState.clicks -= spinCost;
+showFeedback(spinCost, 'deduct');
+elements.wheelResult.textContent = "Spinning...";
+elements.spinWheelButton.disabled = true; // Disable button during spin
+
+setTimeout(() => {
+let totalWeight = wheelPrizes.reduce((sum, prize) => sum + prize.weight, 0);
+let randomNumber = Math.random() * totalWeight;
+let prize = null;
+
+for (let i = 0; i < wheelPrizes.length; i++) {
+randomNumber -= wheelPrizes[i].weight;
+if (randomNumber <= 0) {
+prize = wheelPrizes[i];
+break;
+}
+}
+
+let resultText = '';
+if (prize) {
+if (charactersData[prize.name]) { // It's a character
+if (gameState.characters[prize.name]) {
+// Already owned, give consolation prize
+const consolation = 25;
+gameState.clicks += consolation;
+resultText = `You already own ${prize.name}! Here's ${consolation} BrainRot instead.`;
+showFeedback(consolation);
+} else {
+// New character!
+gameState.characters[prize.name] = true;
+updateBpsMultiplier(); // Recalculate multiplier
+const multiplierPercent = ((charactersData[prize.name].multiplier - 1) * 100).toFixed(0);
+resultText = `You won: ${prize.name}! (+${multiplierPercent}% BPS)`;
+}
+} else if (prize.name.includes("BrainRot")) { // It's a BrainRot amount
+const amount = parseInt(prize.name.split(' ')[0]);
+gameState.clicks += amount;
+resultText = `You won: ${amount} BrainRot!`;
+showFeedback(amount);
+}
+} else {
+resultText = "Lost the spin..."; // Should ideally not happen with proper weights
+}
+
+elements.wheelResult.textContent = resultText;
+elements.spinWheelButton.disabled = false; // Re-enable button after spin
+updateDisplay();
+saveGame();
+}, 1000); // Simulate spin time
+}
+
+// --- Game Loop for Passive Income ---
+function gameLoop() {
+// Apply multiplier for display and actual income
+const effectiveBPS = parseFloat((gameState.bps * gameState.totalBpsMultiplier).toFixed(1));
+if (effectiveBPS > 0) {
+gameState.clicks = parseFloat((gameState.clicks + effectiveBPS).toFixed(2)); // Add and keep some decimal for precision
+updateDisplay();
+}
+// Save game state every 10 seconds (less intensive than saving every second)
+if (Math.floor(Date.now() / 1000) % 10 === 0) {
+saveGame();
+}
+}
+
+// Run the game loop every 1000 milliseconds (1 second)
+setInterval(gameLoop, 1000);
+
+
+// --- Event Listeners ---
+
+elements.clickButton.addEventListener('click', handleManualClick);
+elements.upgradeButton.addEventListener('click', handleUpgradeClick);
+elements.passiveUpgradeButton.addEventListener('click', handlePassiveUpgradeClick);
+elements.spinWheelButton.addEventListener('click', spinWheel);
+
+// Allow clicking the entire card to trigger purchase
+elements.upgradeCard.addEventListener('click', (e) => {
+if (!elements.upgradeButton.disabled && e.target !== elements.upgradeButton) {
+handleUpgradeClick();
+}
+});
+
+elements.passiveUpgradeCard.addEventListener('click', (e) => {
+if (!elements.passiveUpgradeButton.disabled && e.target !== elements.passiveUpgradeButton) {
+handlePassiveUpgradeClick();
+}
+});
+// Wheel spin button will be managed by its own function for disabling
+
+// --- Start Game ---
+loadGame();
+
+</script>
+</body>
+</html>

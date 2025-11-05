@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Protocol | Access Point</title>
+<!-- Load Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- Load Inter Font -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
+<style>
+:root {
+--red-accent: #ef4444; /* Tailwind red-500 */
+}
+body {
+font-family: 'Space Mono', monospace;
+background-color: #0d0d0d;
+}
+.futuristic-border {
+border: 1px solid var(--red-accent);
+box-shadow: 0 0 10px rgba(239, 68, 68, 0.5); /* Soft red glow */
+}
+.log-line {
+opacity: 0; /* Starts invisible, JavaScript fades it in */
+transition: opacity 0.3s ease-in-out;
+}
+.scan-animation {
+background: linear-gradient(90deg, transparent, rgba(239, 68, 68, 0.4), transparent);
+animation: scan 3s infinite linear;
+}
+@keyframes scan {
+0% { transform: translateX(-100%); }
+50% { transform: translateX(100%); }
+100% { transform: translateX(-100%); }
+}
+</style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+
+<div class="w-full max-w-4xl bg-gray-900 text-white rounded-lg overflow-hidden futuristic-border p-8">
+
+<!-- Header Panel -->
+<div class="text-center mb-6">
+<h1 class="text-3xl font-bold text-red-500 tracking-wider">
+<span class="text-gray-200">/</span>PROTOCOL: DEV MODE
+</h1>
+<p class="text-sm text-gray-400 mt-1">
+Awaiting authorization sequence...
+</p>
+</div>
+
+<!-- System Status Bar -->
+<div class="bg-gray-800 p-2 mb-6 rounded-md relative overflow-hidden border border-gray-700">
+<div class="scan-animation absolute top-0 left-0 h-full w-1/4 opacity-50"></div>
+<p id="status-display" class="text-sm text-center text-gray-300">
+[IDLE] System ready for initialization.
+</p>
+</div>
+
+
+<!-- Main Console Log Area -->
+<div class="bg-black border border-gray-700 p-4 h-64 overflow-y-auto rounded-lg mb-6">
+<pre id="console-log" class="text-sm text-gray-400 leading-tight">
+<span class="text-red-500">></span> Initializing Secure Protocol Interface...
+<span class="text-red-500">></span> Authentication Token: N/A
+<span class="text-red-500">></span> Status: Awaiting User Command.
+</pre>
+</div>
+
+<!-- Action Button and Confirmation -->
+<div class="flex flex-col sm:flex-row justify-between items-center space-y-4 sm:space-y-0 sm:space-x-4">
+<button id="initiate-button"
+onclick="startProtocol()"
+class="w-full sm:w-auto px-6 py-3 font-semibold tracking-wider uppercase rounded-md transition duration-300 ease-in-out
+bg-red-600 text-white border border-red-600 hover:bg-red-700 shadow-lg shadow-red-500/50 disabled:opacity-50">
+Initiate Protocol
+</button>
+
+<div id="message-box" class="w-full sm:w-1/2 p-3 text-center bg-gray-800 rounded-md text-sm text-white hidden">
+// Protocol feedback will appear here //
+</div>
+</div>
+</div>
+
+<script>
+const consoleLog = document.getElementById('console-log');
+const statusDisplay = document.getElementById('status-display');
+const initiateButton = document.getElementById('initiate-button');
+const messageBox = document.getElementById('message-box');
+
+let isRunning = false;
+
+function log(text, colorClass = 'text-gray-400') {
+const line = document.createElement('span');
+line.className = `log-line block ${colorClass}`;
+line.innerHTML = `<span class="text-red-500">></span> ${text}`;
+
+// Append line and force scroll to bottom
+consoleLog.appendChild(line);
+consoleLog.scrollTop = consoleLog.scrollHeight;
+
+// Little fade-in effect
+setTimeout(() => {
+line.style.opacity = '1';
+}, 10);
+}
+
+function updateStatus(text, color = 'text-gray-300') {
+statusDisplay.textContent = `[${text.toUpperCase()}] System processing...`;
+statusDisplay.className = `text-sm text-center ${color}`;
+}
+
+function showMessage(text, isError = false) {
+messageBox.textContent = text;
+messageBox.className = 'w-full sm:w-1/2 p-3 text-center rounded-md text-sm text-white transition-all duration-300';
+messageBox.classList.remove('hidden');
+if (isError) {
+messageBox.classList.add('bg-red-700', 'border', 'border-red-500');
+messageBox.classList.remove('bg-gray-800');
+} else {
+messageBox.classList.add('bg-gray-800', 'border', 'border-gray-700');
+messageBox.classList.remove('bg-red-700');
+}
+}
+
+async function startProtocol() {
+if (isRunning) return;
+isRunning = true;
+initiateButton.disabled = true;
+messageBox.classList.add('hidden');
+consoleLog.innerHTML = ''; // Clear log
+
+log('USER COMMAND: Initiate Developer Mode Activation.', 'text-white');
+updateStatus('ACTIVE', 'text-red-400');
+
+await new Promise(r => setTimeout(r, 800));
+log('Scanning network peripherals...', 'text-gray-400');
+
+await new Promise(r => setTimeout(r, 1200));
+log('Establishing local loopback connection...', 'text-gray-400');
+updateStatus('CONNECTING', 'text-yellow-400');
+
+await new Promise(r => setTimeout(r, 1000));
+log('[!] SECURITY VIOLATION: Access request denied by local policy.', 'text-red-500');
+
+await new Promise(r => setTimeout(r, 600));
+log('Running harmless aesthetic bypass sequence (Simulation 7.1)...', 'text-gray-400');
+
+await new Promise(r => setTimeout(r, 1500));
+log('<< SUCCESS >> Aesthetic Simulation Complete.', 'text-green-400');
+updateStatus('STANDBY', 'text-gray-300');
+
+
+showMessage('ACCESS SIMULATED: The aesthetic sequence has concluded successfully.', false);
+
+isRunning = false;
+initiateButton.disabled = false;
+}
+
+// Initial message box setup
+window.onload = () => {
+showMessage('Click "Initiate Protocol" to start the aesthetic sequence.', false);
+};
+</script>
+</body>
+</html>

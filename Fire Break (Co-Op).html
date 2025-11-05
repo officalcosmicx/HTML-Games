@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fire-Break (90s Co-op Game)</title>
+<!-- Load Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- Use Inter font family -->
+<style>
+@import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+body {
+font-family: 'Inter', sans-serif;
+background-color: #1a202c; /* Dark background */
+}
+#gameCanvas {
+border: 4px solid #00ffc8; /* Neon border */
+box-shadow: 0 0 20px #00ffc8, 0 0 5px #00ffc8 inset;
+background-color: #000000;
+}
+.retro-text {
+font-family: 'VT323', monospace;
+text-shadow: 1px 1px 0 #ff0099, 2px 2px 0 #ff0099;
+}
+.retro-button {
+transition: all 0.1s;
+box-shadow: 3px 3px 0 #ff0099;
+border: 2px solid #ff0099;
+}
+.retro-button:active {
+box-shadow: 1px 1px 0 #ff0099;
+transform: translate(2px, 2px);
+}
+.disabled-button {
+opacity: 0.5;
+cursor: not-allowed;
+}
+</style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+
+<div id="gameContainer" class="max-w-4xl w-full flex flex-col items-center space-y-4">
+<h1 class="text-4xl text-[#00ffc8] retro-text mb-4">FIRE-BREAK (Co-op Edition)</h1>
+
+<!-- Connection and Room Management UI -->
+<div id="connectionPanel" class="bg-gray-800 p-4 rounded-lg shadow-lg w-full max-w-xl border-2 border-gray-700">
+<h2 class="text-xl text-white retro-text mb-2">Connect to a Game</h2>
+<div id="authStatus" class="text-sm text-yellow-400 mb-2">Authenticating...</div>
+<div id="playerStatus" class="text-sm text-yellow-400 mb-2">User ID: <span id="userIdDisplay"></span></div>
+
+<div id="roomControls" class="flex flex-col sm:flex-row gap-2">
+<input id="roomIdInput" type="text" placeholder="Enter Room ID" class="flex-grow p-2 rounded bg-gray-900 text-[#00ffc8] border border-gray-700 retro-text" disabled>
+<button id="createRoomBtn" class="bg-[#ff0099] text-white p-2 rounded retro-button font-bold text-sm disabled-button" disabled>Create New Room</button>
+<button id="joinRoomBtn" class="bg-[#00ffc8] text-gray-900 p-2 rounded retro-button font-bold text-sm disabled-button" disabled>Join Room</button>
+</div>
+<div id="roomMessage" class="mt-3 text-white retro-text text-center text-lg"></div>
+</div>
+
+<!-- Game Canvas and Score Display -->
+<div id="gameArea" class="hidden flex flex-col items-center">
+<div class="flex justify-between w-full max-w-xl text-2xl retro-text mb-2">
+<div class="text-[#ff0099]">P1 Score: <span id="p1Score">0</span></div>
+<div class="text-[#00ffc8]">P2 Score: <span id="p2Score">0</span></div>
+</div>
+<canvas id="gameCanvas" width="800" height="400" class="max-w-full h-auto"></canvas>
+<p class="text-white mt-2 text-sm retro-text">Use **W/S** (P1, Left) and **Up/Down** Arrows (P2, Right) to move your paddles.</p>
+</div>
+</div>
+
+<!-- Firebase SDK Imports -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { getFirestore, doc, onSnapshot, setDoc, updateDoc, collection, getDoc, getDocs, query, where, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+// Set Firestore log level to debug for better diagnostics
+setLogLevel('Debug');
+
+// Global Firebase variables provided by the environment
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+let app, db, auth;
+let userId = null;
+let currentRoomId = null;
+let isHost = false; // Only the host runs the physics/game loop
+let isFirebaseReady = false; // New flag to track successful Firebase initialization
+
+// Game Constants
+const CANVAS_WIDTH = 800;
+const CANVAS_HEIGHT = 400;
+const PADDLE_HEIGHT = 80;
+const PADDLE_WIDTH = 15;
+const PADDLE_SPEED = 6;
+const BALL_RADIUS = 8;
+const BRICK_ROW_COUNT = 4;
+const BRICK_COL_COUNT = 8;
+const BRICK_WIDTH = 50;
+const BRICK_HEIGHT = 20;
+const BRICK_PADDING = 10;
+const BRICK_OFFSET_TOP = 50;
+const BRICK_OFFSET_LEFT = (CANVAS_WIDTH - (BRICK_COL_COUNT * (BRICK_WIDTH + BRICK_PADDING))) / 2;
+
+// Colors
+const P1_COLOR = '#ff0099'; // Magenta
+const P2_COLOR = '#00ffc8'; // Cyan
+const BALL_COLOR = '#ffff00'; // Yellow
+const BRICK_COLORS = ['#ff0099', '#00ffc8', '#ffff00', '#ff6600'];
+
+// Game State structure
+const initialGameState = {
+gameStatus: 'waiting', // 'waiting', 'active', 'gameover'
+hostId: null,
+players: {
+p1: { userId: null, paddleY: CANVAS_HEIGHT / 2 - PADDLE_HEIGHT / 2, score: 0, isReady: false, lastInput: Date.now() },
+p2: { userId: null, paddleY: CANVAS_HEIGHT / 2 - PADDLE_HEIGHT / 2, score: 0, isReady: false, lastInput: Date.now() }
+},
+ball: {
+x: CANVAS_WIDTH / 2,
+y: CANVAS_HEIGHT / 2,
+dx: 4,
+dy: -4,
+speed: 4
+},
+bricks: [],
+lastUpdate: Date.now()
+};
+
+let gameState = JSON.parse(JSON.stringify(initialGameState)); // Current local state
+let inputState = { w: false, s: false, up: false, down: false }; // Local input state
+
+// Canvas setup
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const p1ScoreDisplay = document.getElementById('p1Score');
+const p2ScoreDisplay = document.getElementById('p2Score');
+const roomMessage = document.getElementById('roomMessage');
+const gameArea = document.getElementById('gameArea');
+const connectionPanel = document.getElementById('connectionPanel');
+const roomIdInput = document.getElementById('roomIdInput');
+const createRoomBtn = document.getElementById('createRoomBtn');
+const joinRoomBtn = document.getElementById('joinRoomBtn');
+
+
+// --- Firebase Initialization and Authentication ---
+
+/**
+* Initializes Firebase and authenticates the user.
+*/
+async function initializeFirebase() {
+if (firebaseConfig && firebaseConfig.apiKey) {
+try {
+app = initializeApp(firebaseConfig);
+db = getFirestore(app);
+auth = getAuth(app);
+isFirebaseReady = true;
+
+// Set up auth listener
+onAuthStateChanged(auth, (user) => {
+if (user) {
+userId = user.uid;
+document.getElementById('userIdDisplay').textContent = userId;
+document.getElementById('authStatus').textContent = `Authenticated (UID: ${userId.substring(0, 8)}...)`;
+
+// Enable room controls if Firebase is ready
+roomIdInput.disabled = false;
+createRoomBtn.disabled = false;
+joinRoomBtn.disabled = false;
+createRoomBtn.classList.remove('disabled-button');
+joinRoomBtn.classList.remove('disabled-button');
+} else {
+// Attempt to sign in
+handleAuth();
+}
+});
+
+// Initial sign-in attempt
+if (initialAuthToken) {
+await signInWithCustomToken(auth, initialAuthToken);
+} else {
+await signInAnonymously(auth);
+}
+
+} catch (error) {
+console.error("Firebase Service Initialization Error (App/DB/Auth):", error);
+document.getElementById('authStatus').textContent = `DB Error: Multiplayer Disabled.`;
+isFirebaseReady = false;
+}
+} else {
+console.error("Firebase Configuration Error: __firebase_config is missing or invalid. Multiplayer disabled.");
+document.getElementById('authStatus').textContent = `DB Config Error. Multiplayer Disabled.`;
+isFirebaseReady = false;
+// Since we cannot initialize auth without the config, we rely on the environment
+// to provide a user ID or simply use a fallback.
+userId = 'FALLBACK_ID_' + crypto.randomUUID().substring(0, 8);
+document.getElementById('userIdDisplay').textContent = userId;
+}
+}
+
+/**
+* Fallback authentication logic. Only runs if Firebase Auth was successfully initialized.
+*/
+async function handleAuth() {
+if (!auth) return;
+try {
+if (initialAuthToken) {
+await signInWithCustomToken(auth, initialAuthToken);
+} else {
+await signInAnonymously(auth);
+}
+} catch(e) {
+console.error("Anonymous sign-in failed.", e);
+}
+}
+
+
+// --- Room Management and Firestore Operations ---
+
+/**
+* Gets the Firestore document reference for a given room.
+* @param {string} roomId The ID of the room.
+* @returns {object} The Firestore DocumentReference.
+*/
+function getRoomDocRef(roomId) {
+return doc(db, "artifacts", appId, "public", "data", "firebreak_rooms", roomId);
+}
+
+/**
+* Generates the initial brick layout.
+* @returns {Array} An array of brick objects.
+*/
+function createBricks() {
+let bricks = [];
+for (let c = 0; c < BRICK_COL_COUNT; c++) {
+for (let r = 0; r < BRICK_ROW_COUNT; r++) {
+const x = c * (BRICK_WIDTH + BRICK_PADDING) + BRICK_OFFSET_LEFT;
+const y = r * (BRICK_HEIGHT + BRICK_PADDING) + BRICK_OFFSET_TOP;
+bricks.push({
+x: x,
+y: y,
+status: 'active', // 'active' or 'hit'
+colorIndex: r % BRICK_COLORS.length,
+scoreValue: (BRICK_ROW_COUNT - r) * 10
+});
+}
+}
+return bricks;
+}
+
+/**
+* Creates a new game room in Firestore.
+*/
+async function createRoom() {
+if (!isFirebaseReady || !userId) return displayRoomMessage("Error: Multiplayer not ready.");
+
+const newRoomId = crypto.randomUUID().substring(0, 8);
+const roomRef = getRoomDocRef(newRoomId);
+
+try {
+// Check if the room ID is already in use (unlikely with UUID substring but safe)
+const docSnap = await getDoc(roomRef);
+if (docSnap.exists()) {
+return displayRoomMessage("Error: Room ID collision. Try again.");
+}
+
+const newGameState = {
+...initialGameState,
+hostId: userId,
+players: {
+p1: { ...initialGameState.players.p1, userId: userId, isReady: true },
+p2: { ...initialGameState.players.p2, userId: null, isReady: false }
+},
+bricks: createBricks(),
+lastUpdate: Date.now()
+};
+
+await setDoc(roomRef, newGameState);
+currentRoomId = newRoomId;
+isHost = true;
+gameState = newGameState;
+setupGame(newRoomId, true);
+displayRoomMessage(`Room created! Share this ID: ${newRoomId}`);
+} catch (error) {
+console.error("Error creating room:", error);
+displayRoomMessage("Error creating room. Check console.");
+}
+}
+
+/**
+* Joins an existing game room.
+* @param {string} roomId The ID of the room to join.
+*/
+async function joinRoom(roomId) {
+if (!isFirebaseReady || !userId) return displayRoomMessage("Error: Multiplayer not ready.");
+if (!roomId) return displayRoomMessage("Error: Please enter a Room ID.");
+
+const roomRef = getRoomDocRef(roomId);
+
+try {
+const docSnap = await getDoc(roomRef);
+if (!docSnap.exists()) {
+return displayRoomMessage("Error: Room not found.");
+}
+
+const data = docSnap.data();
+if (data.players.p1.userId === userId || data.players.p2.userId === userId) {
+// Rejoining
+} else if (!data.players.p1.userId) {
+data.players.p1.userId = userId;
+data.players.p1.isReady = true;
+} else if (!data.players.p2.userId) {
+data.players.p2.userId = userId;
+data.players.p2.isReady = true;
+} else {
+return displayRoomMessage("Error: Room is full (2 players already joined).");
+}
+
+// Update the player slots in Firestore
+await updateDoc(roomRef, {
+'players.p1.userId': data.players.p1.userId,
+'players.p1.isReady': data.players.p1.isReady,
+'players.p2.userId': data.players.p2.userId,
+'players.p2.isReady': data.players.p2.isReady,
+lastUpdate: Date.now()
+});
+
+currentRoomId = roomId;
+isHost = data.hostId === userId;
+setupGame(roomId, isHost);
+displayRoomMessage(`Joined Room ${roomId}. Waiting for game to start...`);
+
+} catch (error) {
+console.error("Error joining room:", error);
+displayRoomMessage("Error joining room. Check console.");
+}
+}
+
+/**
+* Starts listening to Firestore updates and the game loop.
+* @param {string} roomId The ID of the room.
+* @param {boolean} host Whether this client is the host.
+*/
+function setupGame(roomId, host) {
+// Hide connection panel, show game area
+connectionPanel.classList.add('hidden');
+gameArea.classList.remove('hidden');
+
+// Setup Firestore listener
+const roomRef = getRoomDocRef(roomId);
+onSnapshot(roomRef, (doc) => {
+if (doc.exists()) {
+const latestState = doc.data();
+// Only update local gameState if this client is not the host,
+// or if the update is from a player input/score change.
+if (host) {
+// If host, check if player state needs updating
+const p1Update = latestState.players.p1;
+const p2Update = latestState.players.p2;
+
+// Check for external paddle updates (non-host inputs)
+if (p1Update.userId !== userId && p1Update.lastInput > gameState.players.p1.lastInput) {
+gameState.players.p1.paddleY = p1Update.paddleY;
+gameState.players.p1.lastInput = p1Update.lastInput;
+}
+if (p2Update.userId !== userId && p2Update.lastInput > gameState.players.p2.lastInput) {
+gameState.players.p2.paddleY = p2Update.paddleY;
+gameState.players.p2.lastInput = p2Update.lastInput;
+}
+
+// Update scores
+gameState.players.p1.score = p1Update.score;
+gameState.players.p2.score = p2Update.score;
+
+// Check if game needs to start
+if (gameState.gameStatus === 'waiting' && latestState.players.p1.isReady && latestState.players.p2.isReady) {
+startGame(roomId);
+}
+
+} else {
+// If not host, sync entire game state (including ball/brick positions)
+const p1UserId = latestState.players.p1.userId;
+const p2UserId = latestState.players.p2.userId;
+
+// Identify which player slot this user is
+if (userId === p1UserId) {
+gameState = latestState;
+gameState.players.p2.paddleY = latestState.players.p2.paddleY; // Ensure opponent paddle is synced
+} else if (userId === p2UserId) {
+gameState = latestState;
+gameState.players.p1.paddleY = latestState.players.p1.paddleY; // Ensure opponent paddle is synced
+} else {
+// This should not happen after joining, but sync everything otherwise
+gameState = latestState;
+}
+// Update player-specific fields regardless of role
+gameState.players.p1.userId = latestState.players.p1.userId;
+gameState.players.p2.userId = latestState.players.p2.userId;
+}
+drawGame();
+} else {
+// Room deleted
+roomMessage.textContent = "Game room has been closed.";
+gameArea.classList.add('hidden');
+connectionPanel.classList.remove('hidden');
+currentRoomId = null;
+isHost = false;
+gameState = JSON.parse(JSON.stringify(initialGameState));
+}
+}, (error) => {
+console.error("Firestore Listener Error:", error);
+displayRoomMessage("Connection Error: Check console.");
+});
+
+
+// Start the physics loop only for the host
+if (host) {
+gameLoop();
+} else {
+// Non-host players still need to send input updates
+setInterval(sendPaddleUpdate, 1000 / 30); // 30 times per second
+}
+
+// Bind input handlers
+document.addEventListener('keydown', handleKeyDown);
+document.addEventListener('keyup', handleKeyUp);
+}
+
+/**
+* Tries to start the game if both players are ready.
+*/
+async function startGame(roomId) {
+const roomRef = getRoomDocRef(roomId);
+if (gameState.players.p1.isReady && gameState.players.p2.isReady && gameState.gameStatus === 'waiting') {
+try {
+await updateDoc(roomRef, {
+gameStatus: 'active',
+lastUpdate: Date.now()
+});
+gameState.gameStatus = 'active'; // Local update
+} catch (e) {
+console.error("Error setting game status to active:", e);
+}
+}
+}
+
+/**
+* Sends the local paddle position to Firestore.
+*/
+async function sendPaddleUpdate() {
+if (!currentRoomId || gameState.gameStatus === 'gameover' || !isFirebaseReady) return;
+
+const roomRef = getRoomDocRef(currentRoomId);
+
+// Determine which paddle this user controls
+let playerKey = null;
+if (gameState.players.p1.userId === userId) {
+playerKey = 'p1';
+} else if (gameState.players.p2.userId === userId) {
+playerKey = 'p2';
+}
+
+if (playerKey) {
+const paddleY = gameState.players[playerKey].paddleY;
+const updatePath = `players.${playerKey}.paddleY`;
+const inputPath = `players.${playerKey}.lastInput`;
+
+try {
+await updateDoc(roomRef, {
+[updatePath]: paddleY,
+[inputPath]: Date.now()
+});
+} catch (error) {
+// Silent catch for frequent updates
+// console.error("Error updating paddle:", error);
+}
+}
+}
+
+// --- Drawing Functions ---
+
+/**
+* Draws the current game state to the canvas.
+*/
+function drawGame() {
+// Clear canvas
+ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+// Draw Bricks
+gameState.bricks.forEach(b => {
+if (b.status === 'active') {
+ctx.fillStyle = BRICK_COLORS[b.colorIndex];
+ctx.fillRect(b.x, b.y, BRICK_WIDTH, BRICK_HEIGHT);
+ctx.strokeStyle = '#000000';
+ctx.strokeRect(b.x, b.y, BRICK_WIDTH, BRICK_HEIGHT);
+}
+});
+
+// Draw Paddles
+// P1 (Left)
+ctx.fillStyle = P1_COLOR;
+ctx.fillRect(0, gameState.players.p1.paddleY, PADDLE_WIDTH, PADDLE_HEIGHT);
+
+// P2 (Right)
+ctx.fillStyle = P2_COLOR;
+ctx.fillRect(CANVAS_WIDTH - PADDLE_WIDTH, gameState.players.p2.paddleY, PADDLE_WIDTH, PADDLE_HEIGHT);
+
+// Draw Ball
+ctx.beginPath();
+ctx.arc(gameState.ball.x, gameState.ball.y, BALL_RADIUS, 0, Math.PI * 2);
+ctx.fillStyle = BALL_COLOR;
+ctx.fill();
+ctx.closePath();
+
+// Update score display
+p1ScoreDisplay.textContent = gameState.players.p1.score;
+p2ScoreDisplay.textContent = gameState.players.p2.score;
+
+// Display messages
+ctx.font = "40px 'VT323'";
+ctx.textAlign = 'center';
+ctx.fillStyle = '#ffffff';
+
+if (gameState.gameStatus === 'waiting') {
+const p1Text = gameState.players.p1.userId ? (gameState.players.p1.userId === userId ? "P1 (YOU) Ready" : "P1 Ready") : "P1 Slot Open";
+const p2Text = gameState.players.p2.userId ? (gameState.players.p2.userId === userId ? "P2 (YOU) Ready" : "P2 Ready") : "P2 Slot Open";
+ctx.fillText(p1Text, CANVAS_WIDTH / 4, CANVAS_HEIGHT / 2 - 20);
+ctx.fillText(p2Text, CANVAS_WIDTH * 3 / 4, CANVAS_HEIGHT / 2 - 20);
+if (gameState.players.p1.userId && gameState.players.p2.userId) {
+ctx.fillText("Game Starting...", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 30);
+} else {
+ctx.fillText("Waiting for Player 2...", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 30);
+}
+
+} else if (gameState.gameStatus === 'gameover') {
+ctx.fillText("GAME OVER!", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 20);
+ctx.fillText(`Total Score: ${gameState.players.p1.score + gameState.players.p2.score}`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 30);
+ctx.fillText("Press R to Restart", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 80);
+} else if (gameState.gameStatus === 'win') {
+ctx.fillText("YOU WIN!", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 20);
+ctx.fillText(`Final Score: ${gameState.players.p1.score + gameState.players.p2.score}`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 30);
+ctx.fillText("Press R to Restart", CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 80);
+}
+}
+
+// --- Game Logic (Host Only) ---
+
+/**
+* Handles all physics and state updates. Runs only on the host client.
+*/
+function gameLoop() {
+if (!isHost || gameState.gameStatus !== 'active' || !isFirebaseReady) {
+requestAnimationFrame(gameLoop);
+return;
+}
+
+// 1. Move Paddles (Host updates local state for both based on last known input)
+updatePaddlePosition('p1', inputState.w, inputState.s);
+updatePaddlePosition('p2', inputState.up, inputState.down);
+
+// 2. Move Ball
+let ball = gameState.ball;
+ball.x += ball.dx;
+ball.y += ball.dy;
+
+// 3. Wall Collision
+if (ball.x + ball.dx > CANVAS_WIDTH - BALL_RADIUS || ball.x + ball.dx < BALL_RADIUS) {
+// Ball should only exit left/right if it passes the paddle zone
+}
+if (ball.y + ball.dy < BALL_RADIUS) {
+ball.dy = -ball.dy; // Top wall collision
+}
+
+// 4. Paddle Collision (P1 - Left)
+if (ball.x - BALL_RADIUS < PADDLE_WIDTH && ball.y > gameState.players.p1.paddleY && ball.y < gameState.players.p1.paddleY + PADDLE_HEIGHT) {
+ball.dx = -ball.dx;
+// Add spin based on where it hit the paddle
+let relativeIntersectY = (gameState.players.p1.paddleY + (PADDLE_HEIGHT / 2)) - ball.y;
+let normalizedRelativeIntersectionY = (relativeIntersectY / (PADDLE_HEIGHT / 2));
+ball.dy = normalizedRelativeIntersectionY * ball.speed;
+}
+
+// 5. Paddle Collision (P2 - Right)
+if (ball.x + BALL_RADIUS > CANVAS_WIDTH - PADDLE_WIDTH && ball.y > gameState.players.p2.paddleY && ball.y < gameState.players.p2.paddleY + PADDLE_HEIGHT) {
+ball.dx = -ball.dx;
+// Add spin based on where it hit the paddle
+let relativeIntersectY = (gameState.players.p2.paddleY + (PADDLE_HEIGHT / 2)) - ball.y;
+let normalizedRelativeIntersectionY = (relativeIntersectY / (PADDLE_HEIGHT / 2));
+ball.dy = normalizedRelativeIntersectionY * ball.speed;
+}
+
+// 6. Game Over (Ball exits the side)
+if (ball.x + BALL_RADIUS < 0 || ball.x - BALL_RADIUS > CANVAS_WIDTH) {
+gameState.gameStatus = 'gameover';
+}
+
+// 7. Brick Collision
+let bricksCleared = true;
+for (let i = 0; i < gameState.bricks.length; i++) {
+let b = gameState.bricks[i];
+if (b.status === 'active') {
+bricksCleared = false;
+if (ball.x > b.x && ball.x < b.x + BRICK_WIDTH && ball.y > b.y && ball.y < b.y + BRICK_HEIGHT) {
+ball.dy = -ball.dy; // Reverse Y direction
+b.status = 'hit';
+
+// Award score to the player whose paddle is closest to the hit
+const distanceToP1 = ball.x;
+const distanceToP2 = CANVAS_WIDTH - ball.x;
+
+if (distanceToP1 < distanceToP2) {
+gameState.players.p1.score += b.scoreValue;
+} else {
+gameState.players.p2.score += b.scoreValue;
+}
+}
+}
+}
+
+// Check for Win Condition
+if (bricksCleared) {
+gameState.gameStatus = 'win';
+}
+
+// 8. Write state back to Firestore (The source of truth)
+writeGameStateToFirestore();
+
+// Re-request the next frame
+requestAnimationFrame(gameLoop);
+}
+
+/**
+* Updates the local paddle position based on input state.
+* @param {string} playerKey 'p1' or 'p2'.
+* @param {boolean} upPressed Is the up key pressed?
+* @param {boolean} downPressed Is the down key pressed?
+*/
+function updatePaddlePosition(playerKey, upPressed, downPressed) {
+let paddleY = gameState.players[playerKey].paddleY;
+if (upPressed) {
+paddleY -= PADDLE_SPEED;
+}
+if (downPressed) {
+paddleY += PADDLE_SPEED;
+}
+
+// Boundary checks
+paddleY = Math.max(0, paddleY);
+paddleY = Math.min(CANVAS_HEIGHT - PADDLE_HEIGHT, paddleY);
+
+gameState.players[playerKey].paddleY = paddleY;
+}
+
+/**
+* Writes the entire game state (host only) back to Firestore.
+*/
+async function writeGameStateToFirestore() {
+if (!currentRoomId || !isHost || !isFirebaseReady) return;
+
+const roomRef = getRoomDocRef(currentRoomId);
+
+try {
+// Prepare update payload
+const updatePayload = {
+ball: gameState.ball,
+bricks: gameState.bricks,
+gameStatus: gameState.gameStatus,
+'players.p1.score': gameState.players.p1.score,
+'players.p2.score': gameState.players.p2.score,
+'players.p1.paddleY': gameState.players.p1.paddleY,
+'players.p2.paddleY': gameState.players.p2.paddleY,
+lastUpdate: Date.now()
+};
+
+await updateDoc(roomRef, updatePayload);
+} catch (error) {
+// Handle potential throttling or connection issues silently
+// console.error("Host failed to write game state:", error);
+}
+}
+
+// --- Input Handlers ---
+
+function handleKeyDown(e) {
+// P1 Controls (W/S)
+if (e.key === "w") inputState.w = true;
+else if (e.key === "s") inputState.s = true;
+
+// P2 Controls (Arrows)
+else if (e.key === "ArrowUp") inputState.up = true;
+else if (e.key === "ArrowDown") inputState.down = true;
+
+// Restart key
+else if (e.key === "r" && (gameState.gameStatus === 'gameover' || gameState.gameStatus === 'win') && isHost && isFirebaseReady) {
+resetGame();
+}
+
+// Update local paddle position immediately for responsiveness
+if (currentRoomId && gameState.gameStatus === 'active') {
+if (gameState.players.p1.userId === userId) {
+updatePaddlePosition('p1', inputState.w, inputState.s);
+sendPaddleUpdate();
+} else if (gameState.players.p2.userId === userId) {
+updatePaddlePosition('p2', inputState.up, inputState.down);
+sendPaddleUpdate();
+}
+}
+}
+
+function handleKeyUp(e) {
+if (e.key === "w") inputState.w = false;
+else if (e.key === "s") inputState.s = false;
+else if (e.key === "ArrowUp") inputState.up = false;
+else if (e.key === "ArrowDown") inputState.down = false;
+}
+
+/**
+* Resets the game state and writes it to Firestore (Host only).
+*/
+async function resetGame() {
+if (!isHost || !isFirebaseReady) return;
+
+const roomRef = getRoomDocRef(currentRoomId);
+const resetState = {
+...initialGameState,
+hostId: userId,
+players: {
+p1: { ...initialGameState.players.p1, userId: gameState.players.p1.userId, score: 0, isReady: true },
+p2: { ...initialGameState.players.p2, userId: gameState.players.p2.userId, score: 0, isReady: true }
+},
+bricks: createBricks(),
+gameStatus: 'active',
+lastUpdate: Date.now()
+};
+
+try {
+await setDoc(roomRef, resetState);
+} catch (e) {
+console.error("Error resetting game:", e);
+}
+}
+
+// --- Utility Functions and Event Listeners ---
+
+function displayRoomMessage(message) {
+roomMessage.textContent = message;
+if (message.includes('Room created!')) {
+// Highlight the ID for sharing
+const id = message.split(': ')[1];
+const parts = message.split(':');
+roomMessage.innerHTML = `${parts[0]}: <span class="text-[#ffff00] font-bold">${id}</span>`;
+}
+}
+
+window.onload = function() {
+initializeFirebase();
+
+document.getElementById('createRoomBtn').addEventListener('click', createRoom);
+document.getElementById('joinRoomBtn').addEventListener('click', () => {
+const roomId = document.getElementById('roomIdInput').value.trim();
+joinRoom(roomId);
+});
+};
+</script>
+</body>
+</html>
